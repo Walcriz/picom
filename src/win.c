@@ -2696,7 +2696,7 @@ void unmap_win_start(session_t *ps, struct managed_win *w) {
 	w->opacity_target_old = fmax(w->opacity_target, w->opacity_target_old);
 	w->opacity_target = win_calc_opacity_target(ps, w);
 
-    if (ps->o.animations && ps->o.animation_for_unmap_window != OPEN_WINDOW_ANIMATION_NONE && ps->o.wintype_option[w->window_type].animation) {
+    if (ps->o.animations && ps->o.wintype_option[w->window_type].animation) {
         w->dwm_mask = ANIM_UNMAP;
         init_animation(ps, w);
 
