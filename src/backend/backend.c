@@ -484,17 +484,6 @@ void paint_all_new(session_t *ps, struct managed_win *t) {
 				ps->backend_data->ops->set_image_property(
 				    ps->backend_data, IMAGE_PROPERTY_BORDER_WIDTH,
 				    w->win_image, &border_width);
-				if (w->old_win_image) {
-					// TODO(dccsillag): explain why the following is
-					// "necessary"
-					double zero = 0.0;
-					ps->backend_data->ops->set_image_property(
-					    ps->backend_data, IMAGE_PROPERTY_BORDER_WIDTH,
-					    w->old_win_image, &zero);
-					ps->backend_data->ops->set_image_property(
-					    ps->backend_data, IMAGE_PROPERTY_CORNER_RADIUS,
-					    w->old_win_image, &zero);
-				}
 			}
 
 			ps->backend_data->ops->set_image_property(
@@ -517,43 +506,42 @@ void paint_all_new(session_t *ps, struct managed_win *t) {
 		}
 
 		// Draw window on target
-		bool is_animating = 0 < w->animation_progress && w->animation_progress < 1.0;
-		if (w->frame_opacity == 1 && !is_animating) {
+		bool is_animating = 0 <= w->animation_progress && w->animation_progress < 1.0;
+		if (is_animating && w->old_win_image) {
+			bool is_focused = win_is_focused_raw(ps, w);
+			if (!is_focused && w->focused && w->opacity_is_set)
+				is_focused = true;
+			assert(w->old_win_image);
+
+			bool resizing =
+				w->g.width != w->pending_g.width ||
+				w->g.height != w->pending_g.height;
+
+			// Only animate opacity here if we are resizing
+			// a transparent window
+			process_window_for_painting(ps, w, w->win_image,
+							is_focused ? 1.0 : w->opacity >= 1 ? 1.0 : w->animation_progress,
+							&reg_bound, &reg_visible,
+							&reg_paint, &reg_paint_in_bound);
+
+			// Only do this if size changes as otherwise moving
+			// transparent windows will flicker and if you just
+			// move so slightly they will keep flickering
+			if (resizing && (!is_focused || !w->opacity_is_set)) {
+				process_window_for_painting(ps, w, w->old_win_image,
+								1.0 - w->animation_progress,
+								&reg_bound, &reg_visible,
+								&reg_paint, &reg_paint_in_bound);
+			}
+		} else {
+			process_window_for_painting(
+			    ps, w, w->win_image, 1.0, &reg_bound, &reg_visible,
+			    &reg_paint, &reg_paint_in_bound);
+		}
+		if (w->frame_opacity == 1) {
 			ps->backend_data->ops->compose(ps->backend_data, w->win_image,
 			                               window_coord, NULL, dest_coord,
 			                               &reg_paint_in_bound, &reg_visible, true);
-		} else {
-			if (is_animating && w->old_win_image) {
-				bool is_focused = win_is_focused_raw(ps, w);
-				if (!is_focused && w->focused && w->opacity_is_set)
-					is_focused = true;
-				assert(w->old_win_image);
-
-				bool resizing =
-					w->g.width != w->pending_g.width ||
-					w->g.height != w->pending_g.height;
-
-				// Only animate opacity here if we are resizing
-				// a transparent window
-				process_window_for_painting(ps, w, w->win_image,
-								is_focused ? 1.0 : w->opacity >= 1 ? 1.0 : w->animation_progress,
-								&reg_bound, &reg_visible,
-								&reg_paint, &reg_paint_in_bound);
-
-				// Only do this if size changes as otherwise moving
-				// transparent windows will flicker and if you just
-				// move so slightly they will keep flickering
-				if (resizing && (!is_focused || !w->opacity_is_set)) {
-					process_window_for_painting(ps, w, w->old_win_image,
-									1.0 - w->animation_progress,
-									&reg_bound, &reg_visible,
-									&reg_paint, &reg_paint_in_bound);
-				}
-			} else {
-				process_window_for_painting(
-				    ps, w, w->win_image, 1.0, &reg_bound, &reg_visible,
-				    &reg_paint, &reg_paint_in_bound);
-			}
 		}
 	skip:
 		pixman_region32_fini(&reg_bound);
