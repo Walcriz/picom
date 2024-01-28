@@ -652,8 +652,8 @@ void win_process_update_flags(session_t *ps, struct managed_win *w) {
 	// Whether the window was visible before we process the mapped flag. i.e.
 	// is the window just mapped.
 	bool was_visible = win_is_real_visible(w);
-	log_trace("Processing flags for window %#010x (%s), was visible: %d", w->base.id,
-	          w->name, was_visible);
+	log_trace("Processing flags for window %#010x (%s), was visible: %d, flags: %#lx",
+	          w->base.id, w->name, was_visible, w->flags);
 
 	if (win_check_flags_all(w, WIN_FLAGS_MAPPED)) {
 		map_win_start(ps, w);
@@ -1530,6 +1530,10 @@ void win_on_factor_change(session_t *ps, struct managed_win *w) {
  * Update cache data in struct _win that depends on window size.
  */
 void win_on_win_size_change(session_t *ps, struct managed_win *w) {
+	log_trace("Window %#010x (%s) size changed, was %dx%d, now %dx%d", w->base.id,
+	          w->name, w->widthb, w->heightb, w->g.width + w->g.border_width * 2,
+	          w->g.height + w->g.border_width * 2);
+
 	w->widthb = w->g.width + w->g.border_width * 2;
 	w->heightb = w->g.height + w->g.border_width * 2;
 	w->shadow_dx = ps->o.shadow_offset_x;
@@ -2632,6 +2636,13 @@ bool destroy_win_start(session_t *ps, struct win *w) {
 			add_damage_from_win(ps, mw);
 		}
 
+		if (win_check_flags_all(mw, WIN_FLAGS_CLIENT_STALE)) {
+			mw->client_win = mw->base.id;
+			mw->wmwin = !mw->a.override_redirect;
+			log_debug("(%#010x): client self (%s)", mw->base.id,
+			          (mw->wmwin ? "wmwin" : "override-redirected"));
+		}
+
 		// Clear some flags about stale window information. Because now
 		// the window is destroyed, we can't update them anyway.
 		win_clear_flags(mw, WIN_FLAGS_SIZE_STALE | WIN_FLAGS_POSITION_STALE |
@@ -2752,7 +2763,7 @@ bool win_check_fade_finished(session_t *ps, struct managed_win *w) {
 		case WSTATE_DESTROYING: destroy_win_finish(ps, &w->base); return true;
 		case WSTATE_MAPPING: map_win_finish(w); return false;
 		case WSTATE_FADING: w->state = WSTATE_MAPPED; break;
-		default: unreachable;
+		default: unreachable();
 		}
 	}
 
@@ -3079,7 +3090,7 @@ void win_clear_flags(struct managed_win *w, uint64_t flags) {
 }
 
 void win_set_properties_stale(struct managed_win *w, const xcb_atom_t *props, int nprops) {
-	const auto bits_per_element = sizeof(*w->stale_props) * 8;
+	auto const bits_per_element = sizeof(*w->stale_props) * 8;
 	size_t new_capacity = w->stale_props_capacity;
 
 	// Calculate the new capacity of the properties array
@@ -3114,12 +3125,12 @@ static void win_clear_all_properties_stale(struct managed_win *w) {
 }
 
 static bool win_fetch_and_unset_property_stale(struct managed_win *w, xcb_atom_t prop) {
-	const auto bits_per_element = sizeof(*w->stale_props) * 8;
+	auto const bits_per_element = sizeof(*w->stale_props) * 8;
 	if (prop >= w->stale_props_capacity * bits_per_element) {
 		return false;
 	}
 
-	const auto mask = 1UL << (prop % bits_per_element);
+	auto const mask = 1UL << (prop % bits_per_element);
 	bool ret = w->stale_props[prop / bits_per_element] & mask;
 	w->stale_props[prop / bits_per_element] &= ~mask;
 	return ret;
